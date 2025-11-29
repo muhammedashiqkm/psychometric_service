@@ -2,7 +2,6 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-# Define constants but don't execute logic yet
 LOG_DIR = "logs"
 MAX_BYTES = 5 * 1024 * 1024  
 BACKUP_COUNT = 5       
