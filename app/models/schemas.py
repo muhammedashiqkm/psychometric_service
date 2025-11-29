@@ -6,7 +6,6 @@ def to_camel(string: str) -> str:
     return ''.join(word.capitalize() for word in string.split('_'))
 
 class PsychometricItem(BaseModel):
-    # API sends "TestName", Python uses "test_name"
     test_name: Optional[str] = Field(None, alias="TestName")
     category: str = Field(..., alias="PsychometricTestCategory")
     section_id: Optional[int] = Field(None, alias="PsychometricSectionID")

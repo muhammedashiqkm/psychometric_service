@@ -1,5 +1,4 @@
 import json
-import re
 from typing import List
 from openai import AsyncOpenAI
 import google.generativeai as genai
@@ -9,27 +8,12 @@ from app.core.config import settings
 from app.models.schemas import PsychometricItem, PsychometricAnalysisResponse
 from app.core.logging_config import app_logger, error_logger
 
-# Initialize Clients
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 deepseek_client = AsyncOpenAI(api_key=settings.DEEPSEEK_API_KEY, base_url="https://api.deepseek.com/v1")
 
 if settings.GEMINI_API_KEY:
     genai.configure(api_key=settings.GEMINI_API_KEY)
     gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL_NAME)
-
-def extract_json_from_text(text: str) -> dict:
-    """Robustly extract JSON from LLM response, handling Markdown blocks."""
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-        if match:
-            return json.loads(match.group(1))
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start != -1 and end != 0:
-            return json.loads(text[start:end])
-        raise ValueError("Could not extract JSON from response")
 
 async def analyze_data(
     data_list: List[PsychometricItem], 
@@ -48,26 +32,31 @@ async def analyze_data(
     for item in data_list:
         section = item.section_name or "General"
         
-        student_resp = "No Answer Provided"
-        perf_tag = ""
+        student_response_display = ""
+        performance_tag = ""
 
         if item.student_text_answer:
-            student_resp = f"Text Answer: '{item.student_text_answer}'"
+            student_response_display = f"Text Answer: '{item.student_text_answer}'"
         
         elif item.student_selected_id is not None:
-            student_resp = f"Selected Option ID: {item.student_selected_id}"
+            student_response_display = f"Selected Option ID: {item.student_selected_id}"
             
-            if item.correct_option_id is not None:
+            if item.correct_option_id is not None and item.correct_option_id != 0:
                 is_correct = (item.student_selected_id == item.correct_option_id)
-                perf_tag = "[CORRECT]" if is_correct else "[INCORRECT]"
+                performance_tag = "[CORRECT]" if is_correct else "[INCORRECT]"
+        
+        else:
+            student_response_display = "No Answer Provided"
 
-        correct_resp = item.correct_option_text or item.solution or "N/A"
+        correct_answer_display = item.correct_option_text if item.correct_option_text else item.solution
+        if not correct_answer_display:
+            correct_answer_display = "N/A"
 
         entry = (
             f"Section: {section}\n"
             f"Question: {item.question}\n"
-            f"Student Answer: {student_resp} {perf_tag}\n"
-            f"Correct Answer: {correct_resp}"
+            f"Student Answer: {student_response_display} {performance_tag}\n"
+            f"Correct Answer/Solution: {correct_answer_display}"
         )
         context_parts.append(entry)
 
@@ -75,28 +64,32 @@ async def analyze_data(
 
     prompt = f"""
     You are a Psychometric Analyst. Analyze the student's performance for the category: "{category}".
-    
+    The data below includes questions from multiple sections (Objective and Descriptive).
+
     DATA:
     {full_context_str}
 
     TASK:
-    1. 'description': Define what "{category}" measures (2 sentences).
-    2. 'representation': Consolidate summary (2-3 sentences) of performance across sections.
+    1. 'description': Define what the category "{category}" measures in general (2 sentences).
+    2. 'representation': Write a SINGLE, consolidated summary (2-3 sentences) of the student's performance across ALL sections. 
+       - Evaluate their accuracy in objective questions.
+       - Evaluate the quality of their text answers in descriptive questions.
+       - Highlight any difference in performance between sections (e.g., Section A vs Section B) if noticeable.
 
     OUTPUT JSON STRICTLY:
     {{ "category": "{category}", "description": "...", "representation": "..." }}
     """
 
+    response_content = ""
+    
     try:
-        response_text = ""
-        
         if model_provider == "gemini":
             if not settings.GEMINI_API_KEY:
                 raise ValueError("Gemini API Key missing")
             response = await gemini_model.generate_content_async(
                 prompt, generation_config={"response_mime_type": "application/json"}
             )
-            response_text = response.text
+            response_content = response.text
             
         elif model_provider == "openai":
             if not settings.OPENAI_API_KEY:
@@ -106,7 +99,7 @@ async def analyze_data(
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            response_text = response.choices[0].message.content
+            response_content = response.choices[0].message.content
             
         elif model_provider == "deepseek":
             if not settings.DEEPSEEK_API_KEY:
@@ -116,24 +109,26 @@ async def analyze_data(
                 messages=[{"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}
             )
-            response_text = response.choices[0].message.content
+            response_content = response.choices[0].message.content
 
-        data = extract_json_from_text(response_text)
+        clean_json = response_content.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_json)
         
         return PsychometricAnalysisResponse(
             category=data.get("category", category),
             description=data.get("description", "Description unavailable"),
-            representation=data.get("representation", "Representation unavailable"),
+            Representation=data.get("representation", "Representation unavailable"),
             instance_id=instance_id
         )
 
     except Exception as e:
-        error_logger.error(f"LLM Error [{category}]: {str(e)}", exc_info=True)
-    
+        error_logger.error(f"LLM Generation Failed for {category}: {e}", exc_info=True)
+        
         raise HTTPException(
             status_code=500,
             detail={
                 "error_type": "LLM_PROCESSING_ERROR",
-                "message": "Analysis generation failed.",
+                "message": f"Failed to generate analysis using {model_provider}.",
+                "technical_details": str(e)
             }
         )
