@@ -10,7 +10,7 @@ services:
       - ./logs:/code/logs
     env_file:
       - .env
-    restart: always
+    restart: unless-stopped
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
