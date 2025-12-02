@@ -1,4 +1,8 @@
-📂 Project Structure
+
+
+## 📂 Project Structure
+
+```
 
 psychometric_service/
 ├── app/
@@ -20,11 +24,15 @@ psychometric_service/
 ├── Dockerfile                # Image definition
 └── requirements.txt          # Python dependencies
 
+````
 
-🛠️ Configuration (.env)
+---
 
-Create a .env file in the root directory.
+## 🛠️ Environment Configuration (`.env`)
 
+Create a `.env` file in the root directory.
+
+```env
 # --- Security ---
 SECRET_KEY=your_super_secret_production_key_change_this_immediately
 ALGORITHM=HS256
@@ -43,88 +51,79 @@ FRONTENT_ALLOWED_ORIGINS=
 OPENAI_MODEL_NAME=gpt-4o
 GEMINI_MODEL_NAME=gemini-1.5-flash
 DEEPSEEK_MODEL_NAME=deepseek-chat
+````
+
+---
 
 
-🐳 Docker Installation (Recommended)
+### Build & Run
 
-Build and Run:
-
+```bash
 docker-compose up --build -d
+```
 
 
-Verify Status:
-The API will be available at http://localhost:8000.
-Health check: GET http://localhost:8000/
+## 🔗 API Documentation
 
-View Logs:
-Logs are persisted in the local ./logs folder.
+### 1️⃣ Authentication
 
-💻 Local Installation
+**Endpoint**
 
-Prerequisites: Python 3.10+
+```
+POST /auth/login
+```
 
-Install Dependencies:
+**Headers**
 
-pip install -r requirements.txt
-
-
-Run Application:
-
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-
-🔗 API Documentation
-
-1. Authentication
-
-Endpoint: POST /auth/login
+```
 Content-Type: application/json
+```
 
-Request Body:
+**Request Body**
 
+```json
 {
   "username": "admin",
   "password": "secure_password"
 }
+```
 
+**Response**
 
-Response:
-
+```json
 {
   "access_token": "eyJhbGciOi...",
   "token_type": "bearer"
 }
+```
 
+---
 
-2. Generate Psychometric Analysis
+### 2️⃣ Generate Psychometric Analysis
 
-Endpoint: POST /psychometric/generate
-Headers:
+**Endpoint**
 
+```
+POST /psychometric/generate
+```
+
+**Headers**
+
+```
 Authorization: Bearer <your_access_token>
-
 Content-Type: application/json
+```
 
-Request Body:
+**Request Body Format**
 
-Field
+| Field | Type   | Description                       |
+| ----- | ------ | --------------------------------- |
+| model | String | `gemini`, `openai`, or `deepseek` |
+| data  | List   | List of question objects          |
 
-Type
+**Sample Request**
 
-Description
-
-model
-
-String
-
-gemini, openai, or deepseek
-
-data
-
-List
-
-List of question objects
-
+```json
 {
   "model": "gemini",
   "data": [
@@ -144,14 +143,16 @@ List of question objects
     }
   ]
 }
+```
 
+**Sample Response**
 
-Response:
-
+```json
 {
   "category": "Logical Reasoning",
   "description": "Logical Reasoning measures the ability to analyze patterns...",
   "Representation": "The student struggled with transitive properties in Section A...",
   "instance_id": 55
 }
+```
 
