@@ -1,7 +1,6 @@
 import os
-from pydantic import field_validator
 from pydantic_settings import BaseSettings
-from typing import Optional, List, Union
+
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Psychometric Service"
@@ -20,26 +19,11 @@ class Settings(BaseSettings):
     GEMINI_MODEL_NAME: str = "gemini-1.5-flash" 
     DEEPSEEK_MODEL_NAME: str = "deepseek-chat"
 
-    FRONTENT_ALLOWED_ORIGINS: Union[List[str], str] = []
+    
 
     BASE_URL: str = "http://localhost:8000"
 
-    @field_validator("FRONTENT_ALLOWED_ORIGINS", mode="before")
-    @classmethod
-    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        """
-        Parses a comma-separated string OR a JSON-formatted list.
-        """
-        if isinstance(v, str):
-            if v.strip().startswith("["):
-                import json
-                try:
-                    return json.loads(v)
-                except json.JSONDecodeError:
-                    pass
-            return [i.strip() for i in v.split(",") if i.strip()]
-        
-        return v or []
+    
 
     class Config:
         env_file = ".env"

@@ -11,10 +11,9 @@ app = FastAPI(title="Psychometric Analysis Service")
 app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(analysis.router, prefix="/psychometric", tags=["Analysis"])
 
-if settings.FRONTENT_ALLOWED_ORIGINS:
-  app.add_middleware(
+app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.FRONTENT_ALLOWED_ORIGINS], 
+    allow_origins=["*"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
