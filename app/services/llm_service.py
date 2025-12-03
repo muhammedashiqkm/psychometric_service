@@ -66,25 +66,26 @@ async def analyze_data(
             ):
                 # Use LLM to grade answer between 0 and q_max
                 scoring_prompt = f"""
-You are a strict examiner.
+                 You are a strict examiner.
 
-QUESTION:
-{item.question}
+                QUESTION:
+                 {item.question}
 
-MODEL SOLUTION (IDEAL ANSWER):
-{item.solution or "N/A"}
+                MODEL SOLUTION (IDEAL ANSWER):
+                 {item.solution or "N/A"}
 
-STUDENT ANSWER:
-{item.student_text_answer  or "N/A" }
+                STUDENT ANSWER:
+                 {item.student_text_answer  or "N/A" }
 
-TASK:
-- Give a numeric score between 0 and {q_max}.
-- Consider correctness, completeness, and relevance.
-- Be consistent and not overly generous.
+                TASK:
+                  - Give a numeric score between 0 and {q_max}.
+                  - Consider correctness, completeness, and relevance.
+                  - Be consistent and not overly generous.
 
-OUTPUT JSON STRICTLY:
-{{ "score": <number between 0 and {q_max}> }}
-"""
+                OUTPUT JSON STRICTLY:
+                  {{ "score": <number between 0 and {q_max}> }}
+                               
+                """
 
                 score_response_content = ""
                 try:
@@ -244,6 +245,7 @@ OUTPUT JSON STRICTLY:
        - Evaluate their accuracy in objective questions.
        - Evaluate the quality of their text answers in descriptive questions.
        - Highlight any difference in performance between sections (e.g., Section A vs Section B) if noticeable.
+       - ALSO mention the total score clearly in this summary (example: "The student scored 56 out of 60.")
 
     OUTPUT JSON STRICTLY:
     {{ "category": "{category}", "description": "...", "representation": "..." }}
