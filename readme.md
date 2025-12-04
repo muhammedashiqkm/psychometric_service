@@ -128,19 +128,25 @@ Content-Type: application/json
   "model": "gemini",
   "data": [
     {
-      "TestName": "Aptitude Test 1",
-      "PsychometricTestCategory": "Logical Reasoning",
+      "TestName": "Final Test",
+      "PsychometricTestCategory": "General Skills",
       "PsychometricSectionID": 1,
-      "SectionName": "Section A",
-      "PsychometricQuestionID": 101,
-      "Question": "If A > B and B > C, is A > C?",
-      "Solution": "Yes, transitivity.",
-      "CorrectOptionID": 1,
-      "CorrectOptionText": "Yes",
-      "PsychometricTestInstancesID": 55,
-      "StudentSelectedOptionID": 2,
-      "StudentTextAnswer": null
-    }
+      "SectionName": "MCQ",
+      "PsychometricQuestionID": 1,
+      "Question": "5 + 5 = ?",
+      "Solution": "",
+      "CorrectOptionID": 11,
+      "QuestionMark": 4,
+      "CorrectOptionLabel": "A",
+      "CorrectOptionText": "10",
+      "CorrectOptionScoreValue": 4,
+      "PsychometricTestResponseID": 1,
+      "StudentSelectedOptionID": 11,
+      "StudentSelectedOption": "",
+      "StudentSelectedOptionScore": 0,
+      "StudentTextAnswer": "",
+      "PsychometricTestInstancesID": 500
+    } 
   ]
 }
 ```
@@ -149,10 +155,9 @@ Content-Type: application/json
 
 ```json
 {
-  "category": "Logical Reasoning",
-  "description": "Logical Reasoning measures the ability to analyze patterns...",
-  "Representation": "The student struggled with transitive properties in Section A...",
-  "instance_id": 55
+    "category": "General Skills",
+    "description": "General Skills encompass fundamental cognitive and practical abilities essential for learning and daily tasks. This category typically measures basic academic competencies, problem-solving aptitude, and self-awareness regarding personal attributes.",
+    "representation": "The student demonstrated mixed performance in objective questions, achieving 50% accuracy by correctly answering basic addition and subtraction but struggling with multiplication and division. Their responses in descriptive questions were generally good, indicating a solid understanding of concepts, though some answers were not fully comprehensive. Overall, the student scored 35 out of 50, showing better consistency in descriptive and self-assessment questions than in the objective arithmetic tasks.",
+    "instance_id": 500,
+    "category_score": "35.0 out of 50.0"
 }
-```
-
