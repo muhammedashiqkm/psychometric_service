@@ -1,7 +1,6 @@
 from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
-# Helper to convert snake_case to CamelCase automatically
 def to_camel(string: str) -> str:
     return ''.join(word.capitalize() for word in string.split('_'))
 

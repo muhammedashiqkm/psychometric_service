@@ -159,5 +159,5 @@ Content-Type: application/json
     "description": "General Skills encompass fundamental cognitive and practical abilities essential for learning and daily tasks. This category typically measures basic academic competencies, problem-solving aptitude, and self-awareness regarding personal attributes.",
     "representation": "The student demonstrated mixed performance in objective questions, achieving 50% accuracy by correctly answering basic addition and subtraction but struggling with multiplication and division. Their responses in descriptive questions were generally good, indicating a solid understanding of concepts, though some answers were not fully comprehensive. Overall, the student scored 35 out of 50, showing better consistency in descriptive and self-assessment questions than in the objective arithmetic tasks.",
     "instance_id": 500,
-    "category_score": "35.0 out of 50.0"
+    "category_score": "35.0/50.0"
 }

@@ -38,7 +38,6 @@ async def analyze_data(
     for item in data_list:
         section = item.section_name or "General"
 
-        # -------- Detect type ----------
         is_descriptive = bool(item.solution and item.solution.strip())
         has_scaled_option = bool(
             item.student_selected_option and item.student_selected_option.strip()
@@ -49,11 +48,9 @@ async def analyze_data(
             and item.correct_option_id != 0
         )
 
-        # -------- Score this question ----------
         q_max = 0.0
         q_obtained = 0.0
 
-        # TYPE 2: Descriptive (Solution + QuestionMark + StudentTextAnswer)
         if is_descriptive:
             q_max = float(item.question_mark or 0.0)
             if q_max < 0:
@@ -64,7 +61,7 @@ async def analyze_data(
                 and item.student_text_answer
                 and item.student_text_answer.strip()
             ):
-                # Use LLM to grade answer between 0 and q_max
+                
                 scoring_prompt = f"""
                  You are a strict examiner.
 
@@ -134,7 +131,6 @@ async def analyze_data(
                     )
                     raw_score = 0.0
 
-                # clamp to [0, q_max]
                 if raw_score < 0:
                     q_obtained = 0.0
                 elif raw_score > q_max:
@@ -144,7 +140,6 @@ async def analyze_data(
             else:
                 q_obtained = 0.0
 
-        # TYPE 3: Scaled MCQ (all options valid, different scores)
         elif has_scaled_option:
             q_max = float(item.question_mark or 0.0)
             if q_max < 0:
@@ -159,7 +154,6 @@ async def analyze_data(
             else:
                 q_obtained = 0.0
 
-        # TYPE 1: Normal MCQ (single correct option ID)
         elif has_mcq_ids:
             q_max = float(item.correct_option_score or item.question_mark or 0.0)
             if q_max < 0:
@@ -171,7 +165,6 @@ async def analyze_data(
                 q_obtained = 0.0
 
         else:
-            # Unknown pattern → don't score, but keep possible max from QuestionMark
             q_max = float(item.question_mark or 0.0)
             if q_max < 0:
                 q_max = 0.0
@@ -180,7 +173,6 @@ async def analyze_data(
         total_obtained += q_obtained
         total_max += q_max
 
-        # -------- Build context for final summary --------
         student_response_display = ""
         performance_tag = ""
 
@@ -223,15 +215,13 @@ async def analyze_data(
 
     full_context_str = "\n---\n".join(context_parts)
 
-    # -------- Final category score text --------
     if total_max > 0:
         category_score_text = (
-            f"{round(total_obtained, 2)} out of {round(total_max, 2)}"
+            f"{round(total_obtained, 2)}/{round(total_max, 2)}"
         )
     else:
-        category_score_text = "0 out of 0"
+        category_score_text = "0/0"
 
-    # -------- LLM summary (same style as before) --------
     prompt = f"""
     You are a Psychometric Analyst. Analyze the student's performance for the category: "{category}".
     The data below includes questions from multiple sections (Objective and Descriptive).
@@ -248,7 +238,7 @@ async def analyze_data(
        - ALSO mention the total score clearly in this summary (example: "The student scored 56 out of 60.")
 
     OUTPUT JSON STRICTLY:
-    {{ "category": "{category}", "description": "...", "representation": "..." }}
+    {{ "description": "...", "representation": "..." }}
     """
 
     response_content = ""
@@ -286,7 +276,7 @@ async def analyze_data(
         data = json.loads(clean_json)
 
         return PsychometricAnalysisResponse(
-            category=data.get("category", category),
+            category=category,
             description=data.get("description", "Description unavailable"),
             representation=data.get("representation", "Representation unavailable"),
             instance_id=instance_id,
