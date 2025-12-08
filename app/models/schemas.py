@@ -12,6 +12,7 @@ class PsychometricItem(BaseModel):
     section_name: Optional[str] = Field(None, alias="SectionName")
     question_id: int = Field(..., alias="PsychometricQuestionID")
     question: str = Field(..., alias="Question")
+    question_difficulty_level: Optional[str] = Field(None, alias="QuestionDifficultyLevel")
     solution: Optional[str] = Field(None, alias="Solution")
     correct_option_id: Optional[int] = Field(None, alias="CorrectOptionID")
     correct_option_label: Optional[str] = Field(None, alias="CorrectOptionLabel")
@@ -34,9 +35,13 @@ class PsychometricRequest(BaseModel):
     model: Literal["gemini", "openai", "deepseek"] = "gemini"
     data: List[PsychometricItem]
 
-class PsychometricAnalysisResponse(BaseModel):
-    category: str
+class PsychometricSections(BaseModel):
+    section: str
     description: str
-    representation: str  
+    representation: str
+    section_score: str
+
+class PsychometricAnalysisResponse(BaseModel):
+    sections: List[PsychometricSections]
+    category: str
     instance_id: int
-    category_score: str
