@@ -1,9 +1,9 @@
 import asyncio
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from openai import AsyncOpenAI
 import google.generativeai as genai
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
 from app.core.config import settings
 from app.models.schemas import (
@@ -24,40 +24,45 @@ if settings.GEMINI_API_KEY:
     gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL_NAME)
 
 
-
 async def _get_llm_response(prompt: str, model_provider: str) -> str:
     """
     Centralized helper to call the appropriate LLM provider.
+    Errors here will now propagate up to be caught as HTTPExceptions.
     """
-    if model_provider == "gemini":
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("Gemini API Key missing")
-        response = await gemini_model.generate_content_async(
-            prompt, generation_config={"response_mime_type": "application/json"}
-        )
-        return response.text
+    try:
+        if model_provider == "gemini":
+            if not settings.GEMINI_API_KEY:
+                raise ValueError("Gemini API Key missing")
+            response = await gemini_model.generate_content_async(
+                prompt, generation_config={"response_mime_type": "application/json"}
+            )
+            return response.text
 
-    elif model_provider == "openai":
-        if not settings.OPENAI_API_KEY:
-            raise ValueError("OpenAI API Key missing")
-        response = await openai_client.chat.completions.create(
-            model=settings.OPENAI_MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-        return response.choices[0].message.content
+        elif model_provider == "openai":
+            if not settings.OPENAI_API_KEY:
+                raise ValueError("OpenAI API Key missing")
+            response = await openai_client.chat.completions.create(
+                model=settings.OPENAI_MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            return response.choices[0].message.content
 
-    elif model_provider == "deepseek":
-        if not settings.DEEPSEEK_API_KEY:
-            raise ValueError("DeepSeek API Key missing")
-        response = await deepseek_client.chat.completions.create(
-            model=settings.DEEPSEEK_MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-        return response.choices[0].message.content
+        elif model_provider == "deepseek":
+            if not settings.DEEPSEEK_API_KEY:
+                raise ValueError("DeepSeek API Key missing")
+            response = await deepseek_client.chat.completions.create(
+                model=settings.DEEPSEEK_MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+            return response.choices[0].message.content
 
-    raise ValueError(f"Unknown model provider: {model_provider}")
+        raise ValueError(f"Unknown model provider: {model_provider}")
+    
+    except Exception as e:
+        error_logger.error(f"LLM Provider Error ({model_provider}): {str(e)}")
+        raise e
 
 
 async def _grade_descriptive_answer(
@@ -66,8 +71,8 @@ async def _grade_descriptive_answer(
     model_provider: str
 ) -> float:
     """
-    Grades a single descriptive answer using the LLM.
-    Returns the obtained score (float).
+    Grades a single descriptive answer.
+    Now propagates errors instead of returning 0.0 on failure.
     """
     difficulty_txt = item.question_difficulty_level or "Standard"
     
@@ -93,19 +98,18 @@ async def _grade_descriptive_answer(
     OUTPUT JSON STRICTLY: {{ "score": <number> }}
     """
 
+    score_txt = await _get_llm_response(scoring_prompt, model_provider)
+    
     try:
-        score_txt = await _get_llm_response(scoring_prompt, model_provider)
         score_clean = score_txt.replace("```json", "").replace("```", "").strip()
         score_json = json.loads(score_clean)
         raw_score = float(score_json.get("score", 0.0))
+    except (json.JSONDecodeError, ValueError) as e:
+         raise ValueError(f"LLM returned invalid JSON format for grading: {e}")
 
-        if raw_score < 0: return 0.0
-        if raw_score > max_marks: return max_marks
-        return raw_score
-
-    except Exception as e:
-        error_logger.error(f"Scoring failed for QID {item.question_id}: {e}")
-        return 0.0
+    if raw_score < 0: return 0.0
+    if raw_score > max_marks: return max_marks
+    return raw_score
 
 
 async def _analyze_single_section(
@@ -115,6 +119,7 @@ async def _analyze_single_section(
 ) -> Dict[str, str]:
     """
     Generates the description and representation for a SINGLE section.
+    Now propagates errors instead of returning fallback strings.
     """
     prompt = f"""
     You are a Psychometric Analyst. Analyze the student's performance for the SECTION: "{section_name}".
@@ -134,22 +139,20 @@ async def _analyze_single_section(
       "representation": "..." 
     }}
     """
+    
+    response_text = await _get_llm_response(prompt, model_provider)
+    
     try:
-        response_text = await _get_llm_response(prompt, model_provider)
         clean_json = response_text.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_json)
-        return {
-            "section": section_name,
-            "description": data.get("description", "Description unavailable."),
-            "representation": data.get("representation", "Representation unavailable.")
-        }
-    except Exception as e:
-        error_logger.error(f"Analysis failed for section '{section_name}': {e}", exc_info=True)
-        return {
-            "section": section_name,
-            "description": "Error generating description.",
-            "representation": "Error generating representation."
-        }
+    except json.JSONDecodeError as e:
+        raise ValueError(f"LLM returned invalid JSON for section '{section_name}': {e}")
+
+    return {
+        "section": section_name,
+        "description": data.get("description", "Description unavailable."),
+        "representation": data.get("representation", "Representation unavailable.")
+    }
 
 
 async def analyze_data(
@@ -164,6 +167,7 @@ async def analyze_data(
     category = first_item.category
     instance_id = first_item.instance_id
 
+    
     descriptive_tasks = []
     descriptive_indices = []
 
@@ -185,8 +189,11 @@ async def analyze_data(
         try:
             grading_results = await asyncio.gather(*descriptive_tasks)
         except Exception as e:
-            error_logger.error(f"Parallel grading crashed: {e}")
-            grading_results = [0.0] * len(descriptive_tasks)
+            error_logger.error(f"Grading Phase Failed: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"LLM Service Error during grading: {str(e)}"
+            )
 
     grading_map = dict(zip(descriptive_indices, grading_results))
 
@@ -210,7 +217,6 @@ async def analyze_data(
         student_response_display = ""
         performance_tag = ""
         correct_answer_display = item.correct_option_text if item.correct_option_text else item.solution or "N/A"
-
         is_descriptive = bool(item.solution and item.solution.strip())
         
         has_mcq_ids = (
@@ -224,21 +230,15 @@ async def analyze_data(
         )
 
         if is_descriptive:
-            if index in grading_map:
-                q_obtained = grading_map[index]
-            else:
-                q_obtained = 0.0
-            
+            q_obtained = grading_map.get(index, 0.0)
             student_response_display = f"Text Answer: '{item.student_text_answer}'"
 
         elif has_mcq_ids:
             mcq_max = float(item.correct_option_score or item.question_mark or 0.0)
             if mcq_max < 0: mcq_max = 0.0
             q_max = mcq_max
-
             if item.student_selected_id == item.correct_option_id:
                 q_obtained = q_max
-            
             is_correct = item.student_selected_id == item.correct_option_id
             performance_tag = "[CORRECT]" if is_correct else "[INCORRECT]"
             student_response_display = f"Selected ID: {item.student_selected_id} ('{item.student_selected_option or ''}')"
@@ -248,10 +248,9 @@ async def analyze_data(
                 q_obtained = float(item.student_selected_option_score)
                 if q_obtained < 0: q_obtained = 0.0
                 if q_max > 0 and q_obtained > q_max: q_obtained = q_max
-            
             score_disp = item.student_selected_option_score if item.student_selected_option_score is not None else "N/A"
             student_response_display = f"Selected: '{item.student_selected_option}' (Score: {score_disp})"
-
+        
         else:
             student_response_display = "No Answer Provided"
 
@@ -279,8 +278,11 @@ async def analyze_data(
     try:
         analysis_results = await asyncio.gather(*analysis_tasks)
     except Exception as e:
-        error_logger.error(f"Parallel section analysis failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to analyze sections.")
+        error_logger.error(f"Analysis Phase Failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LLM Service Error during section analysis: {str(e)}"
+        )
 
     
     final_sections_list = []
