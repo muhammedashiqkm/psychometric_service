@@ -44,4 +44,5 @@ class PsychometricSections(BaseModel):
 class PsychometricAnalysisResponse(BaseModel):
     sections: List[PsychometricSections]
     category: str
+    test_name: str
     instance_id: int

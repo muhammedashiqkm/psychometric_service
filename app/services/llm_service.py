@@ -164,6 +164,7 @@ async def analyze_data(
 
     first_item = data_list[0]
     category = first_item.category
+    test_name = first_item.test_name
     instance_id = first_item.instance_id
 
     
@@ -306,5 +307,6 @@ async def analyze_data(
     return PsychometricAnalysisResponse(
         sections=final_sections_list,
         category=category,
-        instance_id=instance_id
+        instance_id=instance_id,
+        test_name=test_name
     )
