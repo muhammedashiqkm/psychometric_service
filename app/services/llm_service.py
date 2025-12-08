@@ -131,7 +131,6 @@ async def _analyze_single_section(
     1. 'description': Define what the section "{section_name}" generally measures (1-2 sentences).
     2. 'representation': Write a summary (2-3 sentences) of the student's specific performance in this section.
        - Highlight strengths or weaknesses based on the provided answers.
-       - Note: If the student answered correctly/incorrectly, mention it.
 
     OUTPUT JSON STRICTLY:
     {{ 
