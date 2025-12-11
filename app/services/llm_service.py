@@ -72,7 +72,6 @@ async def _grade_descriptive_answer(
 ) -> float:
     """
     Grades a single descriptive answer.
-    Now propagates errors instead of returning 0.0 on failure.
     """
     difficulty_txt = item.question_difficulty_level or "Standard"
     
@@ -119,7 +118,7 @@ async def _analyze_single_section(
 ) -> Dict[str, str]:
     """
     Generates the description and representation for a SINGLE section.
-    Now propagates errors instead of returning fallback strings.
+    Includes the updated prompt logic to focus on overall performance.
     """
     prompt = f"""
     You are a Psychometric Analyst. Analyze the student's performance for the SECTION: "{section_name}".
@@ -129,8 +128,11 @@ async def _analyze_single_section(
 
     TASK:
     1. 'description': Define what the section "{section_name}" generally measures (1-2 sentences).
-    2. 'representation': Write a summary (2-3 sentences) of the student's specific performance in this section.
-       - Highlight strengths or weaknesses based on the provided answers.
+    2. 'representation': Write a professional summary (2-3 sentences) of the student's OVERALL PERFORMANCE in this section.
+       - Focus on general proficiency, cognitive patterns, key strengths, or notable weaknesses revealed by the aggregate data.
+       - Do NOT mention specific questions (e.g., "The student answered Question 1 correctly").
+       - Do NOT quote specific student answers.
+       - Instead, use phrases like "The student demonstrated a strong grasp of...", "Performance indicates a gap in...", or "The candidate consistently applied..."
 
     OUTPUT JSON STRICTLY:
     {{ 
@@ -167,7 +169,6 @@ async def analyze_data(
     test_name = first_item.test_name
     instance_id = first_item.instance_id
 
-    
     descriptive_tasks = []
     descriptive_indices = []
 
@@ -197,12 +198,11 @@ async def analyze_data(
 
     grading_map = dict(zip(descriptive_indices, grading_results))
 
-    
     sections_map: Dict[str, Dict[str, Any]] = {}
-
+    
     for index, item in enumerate(data_list):
         section_name = item.section_name or "General"
-
+        
         if section_name not in sections_map:
             sections_map[section_name] = {
                 "total_obtained": 0.0,
@@ -267,6 +267,7 @@ async def analyze_data(
         sections_map[section_name]["entries"].append(entry_str)
 
     
+    # 3. Analyze Sections with LLM
     analysis_tasks = []
     
     for sec_name, data in sections_map.items():
@@ -284,7 +285,7 @@ async def analyze_data(
             detail=f"LLM Service Error during section analysis: {str(e)}"
         )
 
-    
+    # 4. Construct Final Response
     final_sections_list = []
     result_lookup = {res["section"]: res for res in analysis_results}
 
