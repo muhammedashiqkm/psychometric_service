@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal,Dict
+from typing import List, Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 def to_camel(string: str) -> str:
@@ -26,7 +26,6 @@ class PsychometricItem(BaseModel):
     student_text_answer: Optional[str] = Field(None, alias="StudentTextAnswer")
     instance_id: int = Field(..., alias="PsychometricTestInstancesID")
 
-
     model_config = ConfigDict(
         populate_by_name=True,
         alias_generator=None
@@ -38,12 +37,14 @@ class PsychometricRequest(BaseModel):
 
 class PsychometricSections(BaseModel):
     section: str
-    description: str
-    representation: str
+    interpretation: str
     section_score: str
+   
 
 class PsychometricAnalysisResponse(BaseModel):
     sections: List[PsychometricSections]
     category: str
     test_name: str
+    description: str        
+    representation: str
     instance_id: int
