@@ -118,7 +118,7 @@ async def _analyze_single_section(
     model_provider: str
 ) -> Dict[str, str]:
     """
-    Generates the description and representation for a SINGLE section.
+    Generates the interpretation for a SINGLE section.
     Now propagates errors instead of returning fallback strings.
     """
     prompt = f"""
@@ -128,14 +128,13 @@ async def _analyze_single_section(
     {context_str}
 
     TASK:
-    1. 'description': Define what the section "{section_name}" generally measures (1-2 sentences).
-    2. 'representation': Write a summary (2-3 sentences) of the student's specific performance in this section.
+    1. 'interpretation': Write a short (1-2 sentence) interpretation of the student's specific performance in this section.
        - Highlight strengths or weaknesses based on the provided answers.
+       - Keep it concise.
 
     OUTPUT JSON STRICTLY:
     {{ 
-      "description": "...", 
-      "representation": "..." 
+      "interpretation": "..."
     }}
     """
     
@@ -149,8 +148,7 @@ async def _analyze_single_section(
 
     return {
         "section": section_name,
-        "description": data.get("description", "Description unavailable."),
-        "representation": data.get("representation", "Representation unavailable.")
+        "interpretation": data.get("interpretation", "Interpretation unavailable.")
     }
 
 
@@ -298,15 +296,58 @@ async def analyze_data(
         final_sections_list.append(
             PsychometricSections(
                 section=sec_name,
-                description=llm_res.get("description", "N/A"),
-                representation=llm_res.get("representation", "N/A"),
+                interpretation=llm_res.get("interpretation", "N/A"),
                 section_score=score_text
             )
         )
+        
+    # Build a test-level prompt (only description + representation as you requested)
+    test_prompt = f"""
+    You are a Psychometric Analyst. Provide a test-level analysis for the test "{test_name}".
 
-    return PsychometricAnalysisResponse(
-        sections=final_sections_list,
-        category=category,
-        instance_id=instance_id,
-        test_name=test_name
-    )
+    CONTEXT:
+    - Category: {category}
+    - Instance ID: {instance_id}
+    - Sections summary (section name and score): {json.dumps({k: f'{round(v["total_obtained"],2)}/{round(v["total_max"],2)}' for k,v in sections_map.items()})}
+    - Overall Score: {sum(v['total_obtained'] for v in sections_map.values())}/{sum(v['total_max'] for v in sections_map.values())}
+
+    TASK:
+    1. 'description': One-sentence explanation of what this TEST measures overall.
+    2. 'representation': 1-2 sentence summary of how the student performed overall based on section performances.
+
+    OUTPUT JSON STRICTLY:
+    {{
+      "description": "...",
+      "representation": "..."
+    }}
+    """
+
+    # Correct LLM invocation (must be awaited inside async function)
+    try:
+        test_summary_raw = await _get_llm_response(test_prompt, model_provider)
+        test_summary_clean = test_summary_raw.replace("```json", "").replace("```", "").strip()
+        test_data = json.loads(test_summary_clean)
+    except Exception as e:
+        error_logger.error(f"Test-level LLM call failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"LLM Service Error during test summary generation: {str(e)}"
+        )
+        
+    try:
+        response = PsychometricAnalysisResponse(
+            sections=final_sections_list,
+            category=category,
+            description=test_data.get("description", "N/A"),
+            representation=test_data.get("representation", "N/A"),
+            instance_id=instance_id,
+            test_name=test_name
+        )
+    except Exception as e:
+        error_logger.error(f"Failed to construct PsychometricAnalysisResponse: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal error preparing response: {str(e)}"
+        )
+
+    return response

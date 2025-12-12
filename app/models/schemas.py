@@ -37,12 +37,14 @@ class PsychometricRequest(BaseModel):
 
 class PsychometricSections(BaseModel):
     section: str
-    description: str
-    representation: str
+    interpretation: str
     section_score: str
+   
 
 class PsychometricAnalysisResponse(BaseModel):
     sections: List[PsychometricSections]
     category: str
     test_name: str
+    description: str        
+    representation: str
     instance_id: int
