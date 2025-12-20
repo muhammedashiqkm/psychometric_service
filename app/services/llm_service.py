@@ -155,7 +155,7 @@ SECTION PERFORMANCE PROFILE:
 {section_performance_profile}
 
 OBJECTIVES:
-1. DESCRIPTION: One sentence explaining what this test measures.
+1. DESCRIPTION: 1-2 sentence explaining what this test measures.
 2. REPRESENTATION: 2-3 sentences summarizing the student’s overall performance (strengths, balance, consistency).
 
 STRICT RULES:
@@ -179,7 +179,6 @@ class PsychometricLLMService:
     async def _safe_llm_call(self, prompt: str, model_provider: str, max_retries: int = 3) -> str:
         """
         Executes an LLM call with Rate Limiting and Retries.
-        Raises 503 immediately if all retries fail.
         """
         async with self.sem:
             attempt = 0
@@ -242,7 +241,8 @@ class PsychometricLLMService:
     ) -> float:
         
         answer_content = override_answer_text if override_answer_text else item.student_text_answer
-        if not answer_content:
+        
+        if not answer_content or not str(answer_content).strip():
             return 0.0
 
         test_name = item.test_name or "Psychometric Assessment"
@@ -356,130 +356,120 @@ class PsychometricLLMService:
         test_name = first_item.test_name
         instance_id = first_item.instance_id
 
-        academic_tasks = []
-        academic_indices = []
-        interest_tasks = []
-        interest_indices = []
-        interest_item_indices = set()
+        llm_tasks = []
+        llm_task_indices = []
+        
+        results_map: Dict[int, Dict[str, Any]] = {}
 
         for index, item in enumerate(data_list):
-            db_mark = float(item.question_mark or 0.0)
             
-            has_text_answer = bool(item.student_text_answer and item.student_text_answer.strip())
-            has_option_text = bool(item.student_selected_option and item.student_selected_option.strip())
+            try:
+                raw_mark = float(item.question_mark) if item.question_mark else 0.0
+                if raw_mark > 0:
+                    q_max = raw_mark
+                else:
+                    q_max = 5.0
+            except (ValueError, TypeError):
+                q_max = 5.0
+
+            marks_awarded = 0.0
+            status_log = "Unanswered"
+            needs_llm = False
+
+            has_valid_student_text = bool(item.student_text_answer and item.student_text_answer.strip())
+            has_valid_solution = bool(item.solution and item.solution.strip())
             
-            if db_mark <= 0:
-                interest_item_indices.add(index)
-                q_max = 5.0 
+            has_valid_student_id = (item.student_selected_id is not None and item.student_selected_id != 0)
+            has_valid_correct_id = (item.correct_option_id is not None and item.correct_option_id != 0)
+            
+            has_valid_option_text = bool(item.student_selected_option and item.student_selected_option.strip())
+
+            if has_valid_solution and has_valid_student_text:
+                status_log = "Descriptive (Academic)"
+                needs_llm = True
+                task = self._grade_answer(item, q_max, model_provider, is_interest_check=False)
+
+            elif has_valid_correct_id and has_valid_student_id:
+                status_log = "MCQ (ID Match)"
+                if item.correct_option_id == item.student_selected_id:
+                    marks_awarded = q_max
+                else:
+                    marks_awarded = 0.0
+
+           
+            elif has_valid_student_text or has_valid_option_text:
+                
+                if has_valid_student_text:
+                    sub_type = "Text Answer"
+                    text_to_grade = item.student_text_answer
+                else:
+                    sub_type = "Option Text"
+                    text_to_grade = item.student_selected_option
+
+                status_log = f"Interest Grading ({sub_type})"
+                needs_llm = True
+                
+                task = self._grade_answer(
+                    item, 
+                    q_max, 
+                    model_provider, 
+                    override_answer_text=text_to_grade, 
+                    is_interest_check=True 
+                )
+
+                
             else:
-                q_max = db_mark
+                status_log = "Unanswered"
+                marks_awarded = 0.0
 
-            is_standard_descriptive = (bool(item.solution) and db_mark > 0 and has_text_answer)
-            is_interest_grading = (index in interest_item_indices and (has_text_answer or has_option_text))
+            if needs_llm:
+                llm_tasks.append(task)
+                llm_task_indices.append(index)
+                results_map[index] = {
+                    "max": q_max, 
+                    "obtained": 0.0,
+                    "status": status_log
+                }
+            else:
+                results_map[index] = {
+                    "max": q_max, 
+                    "obtained": marks_awarded,
+                    "status": status_log
+                }
 
-            if is_standard_descriptive:
-                academic_indices.append(index)
-                academic_tasks.append(
-                    self._grade_answer(item, q_max, model_provider, is_interest_check=False)
-                )
-
-            elif is_interest_grading:
-                text_to_grade = item.student_text_answer if has_text_answer else item.student_selected_option
-                interest_indices.append(index)
-                interest_tasks.append(
-                    self._grade_answer(
-                        item, 
-                        q_max, 
-                        model_provider, 
-                        override_answer_text=text_to_grade, 
-                        is_interest_check=True
-                    )
-                )
-
-        academic_results = []
-        if academic_tasks:
-            academic_results = await asyncio.gather(*academic_tasks)
-
-        interest_results = []
-        if interest_tasks:
-            interest_results = await asyncio.gather(*interest_tasks)
-
-        academic_score_map = dict(zip(academic_indices, academic_results))
-        interest_score_map = dict(zip(interest_indices, interest_results))
+        if llm_tasks:
+            llm_results = await asyncio.gather(*llm_tasks)
+            for idx, score in zip(llm_task_indices, llm_results):
+                results_map[idx]["obtained"] = score
 
         sections_map: Dict[str, Dict[str, Any]] = {}
 
         for index, item in enumerate(data_list):
             section_name = item.section_name or "General"
-
             if section_name not in sections_map:
                 sections_map[section_name] = {
                     "total_obtained": 0.0,
                     "total_max": 0.0,
                     "entries": []
                 }
-
-            if index in interest_item_indices:
-                q_max = 5.0
-            else:
-                q_max = float(item.question_mark or 0.0)
-                if q_max < 0: q_max = 0.0
             
-            q_obtained = 0.0
-            student_response_display = ""
-            performance_tag = ""
-            correct_answer_display = item.correct_option_text if item.correct_option_text else item.solution or "N/A"
-            
-            is_graded_interest = index in interest_score_map
-            is_graded_academic = index in academic_score_map
-            
-            has_mcq_ids = (item.student_selected_id is not None and item.correct_option_id is not None and item.correct_option_id != 0)
-            has_scaled_option = bool(item.student_selected_option and item.student_selected_option.strip())
-
-            if is_graded_interest:
-                q_obtained = interest_score_map.get(index, 0.0)
-                used_text = item.student_text_answer or item.student_selected_option
-                student_response_display = f"Interest Response: '{used_text}' (AI Graded)"
-                correct_answer_display = "Evaluated on Interest/Engagement"
-
-            elif index in interest_item_indices:
-                 q_obtained = 0.0
-                 student_response_display = "No Answer Provided (Skipped)"
-                 correct_answer_display = "Evaluated on Interest/Engagement"
-
-            elif is_graded_academic:
-                q_obtained = academic_score_map.get(index, 0.0)
-                student_response_display = f"Text Answer: '{item.student_text_answer}'"
-
-            elif has_mcq_ids:
-                mcq_max = float(item.correct_option_score or item.question_mark or 0.0)
-                if mcq_max < 0: mcq_max = 0.0
-                q_max = mcq_max 
-                if item.student_selected_id == item.correct_option_id:
-                    q_obtained = q_max
-                is_correct = item.student_selected_id == item.correct_option_id
-                performance_tag = "[CORRECT]" if is_correct else "[INCORRECT]"
-                student_response_display = f"Selected ID: {item.student_selected_id}"
-
-            elif has_scaled_option:
-                if item.student_selected_option_score is not None:
-                    q_obtained = float(item.student_selected_option_score)
-                    if q_obtained < 0: q_obtained = 0.0
-                    if q_max > 0 and q_obtained > q_max: q_obtained = q_max
-                score_disp = item.student_selected_option_score
-                student_response_display = f"Selected: '{item.student_selected_option}' (Score: {score_disp})"
-            
-            else:
-                student_response_display = "No Answer Provided"
+            res = results_map[index]
+            q_max = res["max"]
+            q_obtained = res["obtained"]
+            status_desc = res["status"]
 
             sections_map[section_name]["total_obtained"] += q_obtained
             sections_map[section_name]["total_max"] += q_max
 
+            student_disp = (item.student_text_answer or 
+                            item.student_selected_option or 
+                            str(item.student_selected_id if item.student_selected_id != 0 else "No Answer"))
+            
             entry_str = (
                 f"Question: {item.question}\n"
-                f"Student Answer: {student_response_display} {performance_tag}\n"
-                f"Correct Answer: {correct_answer_display}\n"
-                f"Points Earned: {q_obtained} out of {q_max}"
+                f"Type: {status_desc}\n"
+                f"Student Answer: {student_disp}\n"
+                f"Points: {q_obtained}/{q_max}"
             )
             sections_map[section_name]["entries"].append(entry_str)
 
@@ -501,6 +491,7 @@ class PsychometricLLMService:
         for sec_name, data in sections_map.items():
             llm_res = result_lookup.get(sec_name, {})
             interpretation_text = llm_res.get("interpretation", "Analysis pending.")
+            
             t_obt = data["total_obtained"]
             t_max = data["total_max"]
             score_text = f"{round(t_obt, 2)}/{round(t_max, 2)}" if t_max > 0 else "0/0"
@@ -512,7 +503,7 @@ class PsychometricLLMService:
                     section_score=score_text
                 )
             )
-            profile_lines.append(f"- Section '{sec_name}': {interpretation_text}")
+            profile_lines.append(f"- Section '{sec_name}': {interpretation_text} (Score: {score_text})")
 
         section_performance_profile_str = "\n".join(profile_lines)
 
