@@ -4,6 +4,11 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Psychometric Service"
+
+    # Where the service listens. PORT is also what docker-compose publishes and
+    # what the container's healthcheck asks, so one line in .env moves all three.
+    HOST: str = os.getenv("HOST", "0.0.0.0")
+    PORT: int = int(os.getenv("PORT", "5010"))
     SECRET_KEY: str = os.getenv("SECRET_KEY")
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_HOURS: int = 1
@@ -21,7 +26,7 @@ class Settings(BaseSettings):
 
     
 
-    BASE_URL: str = "http://localhost:8000"
+    BASE_URL: str = "http://localhost:5010"
 
     
 

@@ -4,8 +4,10 @@ services:
   api:
     build: .
     container_name: psychometry_service
+    # Published and listened on from the same .env value, so the address the
+    # portal is configured with is the address the service answers on.
     ports:
-      - "8000:8000"
+      - "${PORT:-5010}:${PORT:-5010}"
     volumes:
       - ./logs:/code/logs
     env_file:
@@ -13,7 +15,7 @@ services:
     restart: unless-stopped
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      test: ["CMD-SHELL", "curl -f http://localhost:${PORT:-5010}/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

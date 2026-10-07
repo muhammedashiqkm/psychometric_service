@@ -16,6 +16,9 @@ COPY --chown=appuser:appuser app/ ./app/
 
 USER appuser
 
-EXPOSE 8000
+# The port comes from .env. Shell form on purpose: the exec form would hand
+# uvicorn the literal text ${PORT} instead of the number.
+ENV PORT=5010
+EXPOSE ${PORT}
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-5010} --workers 2
